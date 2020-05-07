@@ -10,7 +10,7 @@ library(tibble) #table manipulation library
 
 #Within ths Rproj directory we will find two tables - one containing publicly available COVID data downloaded from "kaggle.com/sudalairajkumar/covid19-in-usa" the second is a .csv file which I created contianing population information for the 50 states plus DC and Puerto Rico.
 
-#I use the read.csv command to take the csv files and create data frames with the information.
+#We can use the read.csv command to take the csv files and create data frames with the information.
 
 alldata <- read.csv("us_states_covid19_daily.csv", sep = ",")
 statepop <- read.csv("States.csv", sep = ",")
@@ -30,20 +30,16 @@ selectedpops <- data.frame(statepop$StateAbbreviation, statepop$Pop.millions)
 
 tablemerge <- full_join(allpositivecases, selectedpops, by = c("alldata.state" = "statepop.StateAbbreviation"))
 
-#Now that the tables are merged lets divide the number of cases by the population to get the number of cases per million (CPM) individuals, in the same step, lets remove all states that are not on our selected populations list. We can do these two steps at once by using the dplyr "pipe" %>%. A pipe allows you to run a designated set of data through multiple commands at once.  
-
-casespermillion <- tablemerge %>%
-  mutate(CPM=alldata.positive/statepop.Pop.millions) %>% #calculates CPM
-  filter(statepop.Pop.millions != "NA") #removes NA values - ie:states that have no info
-
-#Note that the number of observations reduces here, this shows that the removal of NAs worked.
-
-#For our heatmap we will need a numeric matrix that only has information about state, date and CPM. We can use dplyr to select the columns we want to use to create our data matrix.
+#Now that the tables are merged lets calculate the number of cases per million (CPM) individuals normalized in a log2 scale to better visualize doubling time. In the same step, lets remove all the data that is not properly calculated or is results in an NA value. We can group these steps all together these two steps at once by using the dplyr "pipe" %>%. A pipe allows you to run a designated set of data through multiple commands at once.  
 
 casespermillion <- tablemerge %>%
   mutate(Log2_CPM=log2(alldata.positive/statepop.Pop.millions)) %>% #calculates CPM
   filter(statepop.Pop.millions != "NA") %>%
   filter(Log2_CPM != -Inf)
+
+#Note that the number of observations reduces here, this shows that the removal of NAs, and removal of Log2(0) errors, worked. What would happen if we don't filter the data? How would that influence the later steps?
+
+#For our heatmap we will need a numeric matrix that only has information about state, date and CPM. We can use dplyr to select the columns we want to use to create our data matrix.
 
 forheatmapcpm <- casespermillion %>%
   select(alldata.date, alldata.state, Log2_CPM)
@@ -54,17 +50,21 @@ forheatmapcpm <- casespermillion %>%
 
 forheatmapcpm <- forheatmap1 %>%
   group_by(alldata.state, alldata.date) %>%
-  spread(key = alldata.date, value = CPM) 
+  spread(key = alldata.date, value = Log2_CPM) 
 
-#note that the spread() function is depreciated/retired. This means that there are no longer updates to the particular package. For an open source software like R why is it a problem to use a retired function since it still works right now...? Within the help area look up to see what function serves to replace it. What do they recommend? Why is it better to use the replacement function?
+#Note that the spread() function is depreciated/retired. This means that there are no longer updates to the particular package. For an open source software like R... why is it a problem to use a retired function since it still works right now? Within the help area look up to see what function serves to replace it. What do they recommend? How would you rewrite the code using the recommended function?
 
-#Notice how this reshapes the data. This is an essential first step to create the numeric matrix. Since some states do not have any recorded information on positive cases on certain dates - here we convert all NA values into 0. 
+#We then push the first column of information into rownames.
+
+forheatmapcpm <- column_to_rownames(forheatmapcpm, var = "alldata.state")
+
+#Notice how this reshapes the data. This is an essential first step to create the numeric matrix. Since some states do not have any recorded information on positive cases on certain dates it reintroduces a bunch of NAs - here we convert all NA values into the lowest value on our table. 
 
 forheatmapcpm[is.na(forheatmapcpm)] <- min(forheatmapcpm, na.rm=TRUE)
 
-#Now we have a data frame called forheatmapcpm with a column for state name and a series of columns for dates. The next step is that we want to force the State name column into the rownames category. This can be done with column_to_rownames() command in the tibble() library.
+#What does this calculation accomplish? Why is it problematic? Can you think of alternative solutions to 
 
-forheatmapcpm <- column_to_rownames(forheatmapcpm, var = "alldata.state")
+#Now we have a data frame called forheatmapcpm with a column for state name and a series of columns for dates. The next step is that we want to force the State name column into the rownames category. This can be done with column_to_rownames() command in the tibble() library.
 
 #We also happen to know that only a few states were reporting data before March 1, but other states have data from as early as january, so we trim the data table to March 1, 2020.
 
@@ -84,13 +84,13 @@ cpmmatrix <- as.matrix(forheatmaptrim)
 
 cpmbreaks <- as.integer(min(forheatmapcpm-1)):as.integer(max(forheatmapcpm))
 
-#Finally we compose the code for the heatmap setting each parameter on a separate line to encourage readability. For color, we loaded the RColorBrewer package at the beginning of the document. Using the colorRampPalette function we set a color "Ramp", or gradient, using the full range (9) of the "Blues" brewer paletee designated one color for the number of values in cpmbreaks we calculated above. We remove the border_color for ease of reading the heatmap.
+#Finally we compose the code for the heatmap setting each parameter on a separate line to encourage readability. For color, we loaded the RColorBrewer package at the beginning of the document. Using the colorRampPalette function we set a color "Ramp", or gradient, using the full range (9) of the "Purples" brewer paletee designated one color for the number of values in cpmbreaks we calculated above. We remove the border_color for ease of reading the heatmap.
 
 cpmplot <- pheatmap(
   cpmmatrix, 
   scale="none", 
   cluster_cols = FALSE, 
   breaks = cpmbreaks, 
-  color = colorRampPalette(brewer.pal(9, "Blues"))(length(cpmbreaks)),
+  color = colorRampPalette(brewer.pal(9, "Purples"))(length(cpmbreaks)),
   border_color = NA
 )
