@@ -3,7 +3,8 @@
 #Note: if the library(packagename) command does not work, try install.packages('packagename') first and then rerun library(packagename)
 
 library(dplyr) #data manipulation and wrangling library
-library(gplots) #data plottling library
+library(pheatmap) #heatmap plottling library
+library(RColorBrewer) #color palette library
 library(tidyr) #data manipulation and wrangling library
 library(tibble) #table manipulation library
 
@@ -39,8 +40,13 @@ casespermillion <- tablemerge %>%
 
 #For our heatmap we will need a numeric matrix that only has information about state, date and CPM. We can use dplyr to select the columns we want to use to create our data matrix.
 
-forheatmap1 <- casespermillion %>%
-  select(alldata.date, alldata.state, CPM)
+casespermillion <- tablemerge %>%
+  mutate(Log2_CPM=log2(alldata.positive/statepop.Pop.millions)) %>% #calculates CPM
+  filter(statepop.Pop.millions != "NA") %>%
+  filter(Log2_CPM != -Inf)
+
+forheatmapcpm <- casespermillion %>%
+  select(alldata.date, alldata.state, Log2_CPM)
 
 #This data is still in the form of data frame, which does not work for the heatmap(), heatmap.2() or pheatmap() commands. These commands require a numeric matrix, so we need to reformat the data into this form. 
 
@@ -48,29 +54,43 @@ forheatmap1 <- casespermillion %>%
 
 forheatmapcpm <- forheatmap1 %>%
   group_by(alldata.state, alldata.date) %>%
-  spread(key = alldata.date, value = CPM)
+  spread(key = alldata.date, value = CPM) 
+
+#note that the spread() function is depreciated/retired. This means that there are no longer updates to the particular package. For an open source software like R why is it a problem to use a retired function since it still works right now...? Within the help area look up to see what function serves to replace it. What do they recommend? Why is it better to use the replacement function?
 
 #Notice how this reshapes the data. This is an essential first step to create the numeric matrix. Since some states do not have any recorded information on positive cases on certain dates - here we convert all NA values into 0. 
 
-forheatmapcpm[is.na(forheatmapcpm)] <- 0
+forheatmapcpm[is.na(forheatmapcpm)] <- min(forheatmapcpm, na.rm=TRUE)
 
 #Now we have a data frame called forheatmapcpm with a column for state name and a series of columns for dates. The next step is that we want to force the State name column into the rownames category. This can be done with column_to_rownames() command in the tibble() library.
 
 forheatmapcpm <- column_to_rownames(forheatmapcpm, var = "alldata.state")
 
-#We also happen to know that exporting massive heatmaps can take a lot of ram and time and can easily overload a machine, so we limit the data that we export to the most recent 30 days of data.
+#We also happen to know that only a few states were reporting data before March 1, but other states have data from as early as january, so we trim the data table to March 1, 2020.
 
-forheatmap30 <- forheatmapcpm[(ncol(forheatmapcpm)-29):(ncol(forheatmapcpm))]
+forheatmaptrim <- forheatmapcpm[as.integer(which(colnames(forheatmapcpm)=="20200301")):(ncol(forheatmapcpm))]
+
 
 #Now that all non-numeric characters have been removed from the data frame we can convert the data frame into a numeric matrix using the as.matrix() command.
 
-cpmmatrix <- as.matrix(forheatmap30)
+cpmmatrix <- as.matrix(forheatmaptrim)
 
-#Finally we write the code for the heatmap. Here we use the heatmap.2 function because it gives us some more customizability relative to the base R heatmap function. 
+#Finally we write the code for the heatmap. Here we use the pheatmap function because it gives us some more customizability relative to the base R, and gplots heatmap functions. 
+#We set the scale to "none" because we want the graph to scale the plot based on all the values (otherwise, it will normalize the data based on column or row values in isolation). 
 
-#We set the scale to "none" because we want the graph to scale the plot based on all the values (not the columns or rows). 
-#The heatmap function automatically creates dendograms for the x and the y axis which reorganizes the data. We want to organize the data based on the states with the highest to lowest CPM, but we don't want to reorganize the columns because we want to look at the data in chronological order. Colv or Rowv are the designations that determine whether or not the rows are reorganized. 
-#Finally, I want to set the color key to a log2 scale so I set the color breaks based on caseload doubling time with a lower threshold of .5 cases per million to the max caseload (see NY). 
-#Heatmap2 does density tracing (I have no idea what that means, but it looks bad on the graph, so I remove the trace and the density.info as well)
+#The pheatmap function automatically creates dendograms for the x and the y axis which reorganizes the data. We want to organize the data based on the states with the ~highest to lowest CPM, but we don't want to reorganize the columns because we want to look at the data in chronological order. culster_cols or cluster_rows are the designations that determine whether or not the rows are reorganized. 
 
-cpmplot <- heatmap.2(cpmmatrix, scale="none", Colv = NA, breaks = c(2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16314), trace = "none", density.info = "none")
+#Next we set some parameters for colors. In order to visualize doubling time, we log2 transformed the data. In order to see doubling time clearly on the map - it would be best to set one shade as a whole-number integer bin in log2 space. The 'breaks =' parameter allows us to designate the range bins to create from the heatmap, so we use the as.integer() function to caculate the min and max vaules for the matrix of data. Below we set the range of values as a list called cpmbreaks.
+
+cpmbreaks <- as.integer(min(forheatmapcpm-1)):as.integer(max(forheatmapcpm))
+
+#Finally we compose the code for the heatmap setting each parameter on a separate line to encourage readability. For color, we loaded the RColorBrewer package at the beginning of the document. Using the colorRampPalette function we set a color "Ramp", or gradient, using the full range (9) of the "Blues" brewer paletee designated one color for the number of values in cpmbreaks we calculated above. We remove the border_color for ease of reading the heatmap.
+
+cpmplot <- pheatmap(
+  cpmmatrix, 
+  scale="none", 
+  cluster_cols = FALSE, 
+  breaks = cpmbreaks, 
+  color = colorRampPalette(brewer.pal(9, "Blues"))(length(cpmbreaks)),
+  border_color = NA
+)
