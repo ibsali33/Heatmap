@@ -48,7 +48,7 @@ forheatmapcpm <- casespermillion %>%
 
 #In order to do that we have to spread out the values such that state names are the rows and dates are the columns. So we use the group_by() command on state and date information, and use the spread() function to spread the CPM value along the key alldata.date variable.
 
-forheatmapcpm <- forheatmap1 %>%
+forheatmapcpm <- forheatmapcpm %>%
   group_by(alldata.state, alldata.date) %>%
   spread(key = alldata.date, value = Log2_CPM) 
 
@@ -84,13 +84,14 @@ cpmmatrix <- as.matrix(forheatmaptrim)
 
 cpmbreaks <- as.integer(min(forheatmapcpm-1)):as.integer(max(forheatmapcpm))
 
-#Finally we compose the code for the heatmap setting each parameter on a separate line to encourage readability. For color, we loaded the RColorBrewer package at the beginning of the document. Using the colorRampPalette function we set a color "Ramp", or gradient, using the full range (9) of the "Purples" brewer paletee designated one color for the number of values in cpmbreaks we calculated above. We remove the border_color for ease of reading the heatmap.
+#Finally we compose the code for the heatmap setting each parameter on a separate line to encourage readability. For color, we loaded the RColorBrewer package at the beginning of the document. Using the colorRampPalette function we set a color "Ramp", or gradient, using the full range (9) of the "Blues" brewer paletee designated one color for the number of values in cpmbreaks we calculated above. We remove the border_color for ease of reading the heatmap.
 
 cpmplot <- pheatmap(
   cpmmatrix, 
   scale="none", 
   cluster_cols = FALSE, 
   breaks = cpmbreaks, 
-  color = colorRampPalette(brewer.pal(9, "Purples"))(length(cpmbreaks)),
+  color = colorRampPalette(brewer.pal(9, "Blues"))(length(cpmbreaks)),
   border_color = NA
 )
+
